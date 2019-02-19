@@ -1,0 +1,159 @@
+import cv2
+from darkflow.net.build import TFNet
+import numpy as np
+import time
+import argparse
+import glob
+import os
+import sys
+import keyboard
+
+basedir = os.path.dirname(__file__)
+sys.path.append(os.path.abspath(os.path.join(basedir, os.path.pardir)))
+from tracker import re3_tracker
+
+from re3_utils.util import drawing
+from re3_utils.util import bb_util
+from re3_utils.util import im_util
+
+from constants import OUTPUT_WIDTH
+from constants import OUTPUT_HEIGHT
+from constants import PADDING
+
+np.set_printoptions(precision=6)
+np.set_printoptions(suppress=True)
+
+#YOLO Define
+options = {
+    'model': 'cfg/yolo.cfg',
+    'load': 'weights/yolov2.weights',
+    'threshold': 0.6,
+}
+
+tfnet = TFNet(options)
+colors = [tuple(255 * np.random.rand(3)) for _ in range(10)]
+
+cam = cv2.VideoCapture('fix4.avi')
+cv2.namedWindow('Webcam', cv2.WINDOW_NORMAL)
+cv2.resizeWindow('Webcam', OUTPUT_WIDTH, OUTPUT_HEIGHT)
+
+#Re3 Define
+tracker = re3_tracker.Re3Tracker()
+x1 = np.zeros((256,),dtype=np.int32)
+x2 = np.zeros((256,),dtype=np.int32)
+y1 = np.zeros((256,),dtype=np.int32)
+y2 = np.zeros((256,),dtype=np.int32)
+coordinate = np.zeros((10,4),dtype=np.int32)
+coor = np.zeros((10,4),dtype=np.int32)
+boxToDraw = np.zeros(4)
+w = 0
+
+##########################
+
+while True:
+    stime = time.time()
+    ret, img = cam.read()
+
+    if img is None:
+        print("Jumlah frame = ", w)
+        break
+    
+    drawImg = img.copy()
+    
+    if w == 0:
+        jumlah = 0
+        results = tfnet.return_predict(img)
+        for color, result in zip(colors, results):
+            tl = (result['topleft']['x'], result['topleft']['y'])
+            br = (result['bottomright']['x'], result['bottomright']['y'])
+            label = result['label']
+            confidence = result['confidence']
+            text = '{}: {:.0f}%'.format(label, confidence * 100)
+            img = cv2.rectangle(img, tl, br, color, 2)
+            img = cv2.putText(
+                img, text, tl, cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 0), 2)
+            print("X1 = ", result['topleft']['x'], "   Y1 = ", result['topleft']['y'],
+                  "   X2 = ", result['bottomright']['x'], "   Y2 = ",
+                  result['bottomright']['y'])
+            
+            # Save value in array for Re3
+            x1[jumlah] = result['topleft']['x']
+            x2[jumlah] = result['bottomright']['x']
+            y1[jumlah] = result['topleft']['y']
+            y1[jumlah] = result['bottomright']['y']
+
+            coordinate[jumlah][0] = result['topleft']['x']
+            coordinate[jumlah][2] = result['bottomright']['x']
+            coordinate[jumlah][1] = result['topleft']['y']
+            coordinate[jumlah][3] = result['bottomright']['y']
+            jumlah+=1
+               
+        #cv2.imshow('frame', img)
+
+        print('coordinate[0] = ', coordinate[0])
+        print('coordinate[1] = ', coordinate[1])
+        print('coordinate[2] = ', coordinate[2])
+        print('coordinate[3] = ', coordinate[3])
+        
+        if jumlah == 1:
+            tracker.track('objek1', img[:,:,::-1], coordinate[0])
+        elif jumlah == 2:
+            tracker.multi_track(['objek1', 'objek2'], img[:,:,::-1],
+                                            {'objek1' : coordinate[0], 'objek2' : coor})
+        elif jumlah == 3:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3'], img[:,:,::-1],
+                                            {'objek1' : coordinate[0], 'objek2' : coordinate[1], 'objek3' : coordinate[2]})
+        elif jumlah == 4:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3', 'objek4'], img[:,:,::-1],
+                                            {'objek1' : coordinate[0], 'objek2' : coordinate[1], 'objek3' : coordinate[2], 'objek4' : coordinate[3]})
+        elif jumlah == 5:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3', 'objek4', 'objek5'], img[:,:,::-1],
+                                            {'objek1' : coordinate[0], 'objek2' : coordinate[1], 'objek3' : coordinate[2], 'objek4' : coordinate[3], 'objek5' : coordinate[4]})
+
+    if w == 1:
+        if jumlah == 1:
+            boxToDraw = tracker.track('objek1', img[:,:,::-1])
+        elif jumlah == 2:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2'], img[:,:,::-1])
+        elif jumlah == 3:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3'], img[:,:,::-1])
+        elif jumlah == 4:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3', 'objek4'], img[:,:,::-1])
+        elif jumlah == 5:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3', 'objek4', 'objek5'], img[:,:,::-1])
+    else:
+        if jumlah == 1:
+            boxToDraw = tracker.track('objek1', img[:,:,::-1])
+        elif jumlah == 2:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2'], img[:,:,::-1])
+        elif jumlah == 3:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3'], img[:,:,::-1])
+        elif jumlah == 4:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3', 'objek4'], img[:,:,::-1])
+        elif jumlah == 5:
+            boxToDraw = tracker.multi_track(['objek1', 'objek2', 'objek3', 'objek4', 'objek5'], img[:,:,::-1])
+
+
+    if w > 1:
+        if jumlah == 1:
+            cv2.rectangle(drawImg,
+                    (int(boxToDraw[0]), int(boxToDraw[1])),
+                    (int(boxToDraw[2]), int(boxToDraw[3])),
+                    [0,0,255], 2)
+        else :
+            for bb,bbox in enumerate(boxToDraw):
+                color = cv2.cvtColor(np.uint8([[[bb * 255 / len(boxToDraw), 128, 200]]]),
+                    cv2.COLOR_HSV2RGB).squeeze().tolist()
+                cv2.rectangle(drawImg, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), color, 2)
+        
+    cv2.imshow('Webcam', drawImg)
+    keyPressed = cv2.waitKey(1)
+    if keyPressed == 27 or keyPressed == 1048603:
+        break
+    #cv2.waitKey(0)
+    w+=1
+cv2.destroyAllWindows()
+cam.release()
+#########################
+
+#########################
